@@ -1,0 +1,313 @@
+{
+  "name": "Microsoft SEC Financial Snapshot",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        -304
+      ],
+      "id": "f1085202-c0c4-43ba-a062-f16d2631d2b8",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "AI Financial Research Analyst local learning project; contact: your-email@example.com"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -224,
+        -304
+      ],
+      "id": "df27d67d-7ca9-4c8a-91a2-026f8069510b",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst usGaap = data.facts[\"us-gaap\"];\n\nfunction latestAnnualUsd(tag) {\n  const rows = usGaap?.[tag]?.units?.USD ?? [];\n\n  const latest = rows\n    .filter(row => row.form === \"10-K\" && row.end)\n    .sort(\n      (a, b) =>\n        b.end.localeCompare(a.end) ||\n        (b.filed ?? \"\").localeCompare(a.filed ?? \"\")\n    )[0];\n\n  if (!latest) return null;\n\n  return {\n    valueUSD: latest.val,\n    valueBillions: Number((latest.val / 1_000_000_000).toFixed(2)),\n    periodEnded: latest.end,\n    filed: latest.filed,\n  };\n}\n\nreturn [\n  {\n    json: {\n      company: data.entityName,\n      cik: data.cik,\n      source: \"SEC EDGAR Company Facts\",\n      metrics: {\n        revenue: latestAnnualUsd(\n          \"RevenueFromContractWithCustomerExcludingAssessedTax\"\n        ),\n        netIncome: latestAnnualUsd(\"NetIncomeLoss\"),\n        totalAssets: latestAnnualUsd(\"Assets\"),\n      },\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -304
+      ],
+      "id": "8c3fba90-0a31-4929-871e-6824d69819f8",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "url": "https://www.microsoft.com/en-us/investor/earnings/fy-2027-q1/press-release-webcast",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -352,
+        -144
+      ],
+      "id": "f507292c-463c-4a54-a2ed-49e8a6def6de",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "pageText",
+              "cssSelector": "body"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        -128,
+        -144
+      ],
+      "id": "c58ab2da-1a36-459c-8854-b030be5da896",
+      "name": "HTML"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = String($input.first().json.pageText ?? \"\");\nconst text = raw.replace(/\\\\n/g, \" \").replace(/\\s+/g, \" \");\n\nconst revenue = text.match(/Revenue was \\$([\\d.]+) billion/i);\nconst netIncome = text.match(/Net income was \\$([\\d.]+) billion/i);\nconst quarterEnded = text.match(\n  /quarter ended ([A-Z][a-z]+ \\d{1,2}, \\d{4})/i\n);\n\n// Read the exact current and prior-year amounts from the income statement.\nconst incomeStatement = text.match(\n  /INCOME STATEMENTS([\\s\\S]*?)BALANCE SHEETS/i\n);\n\nif (!incomeStatement) {\n  throw new Error(\"Could not find the income statement in pageText.\");\n}\n\nconst statement = incomeStatement[1];\nconst revenues = statement.match(\n  /Total revenue\\s+\\$?([\\d,]+)\\s+\\$?([\\d,]+)/i\n);\nconst netIncomes = statement.match(\n  /Net income\\s+\\$?([\\d,]+)\\s+\\$?([\\d,]+)/i\n);\nconst grossProfits = statement.match(\n  /Gross margin\\s+\\$?([\\d,]+)\\s+\\$?([\\d,]+)/i\n);\nif (!revenue || !netIncome || !quarterEnded || !revenues || !netIncomes || !grossProfits) {\n  throw new Error(\"Could not find all current and prior-year earnings figures.\");\n}\n\nconst currentRevenue = Number(revenues[1].replace(/,/g, \"\")) / 1000;\nconst priorRevenue = Number(revenues[2].replace(/,/g, \"\")) / 1000;\nconst currentNetIncome = Number(netIncomes[1].replace(/,/g, \"\")) / 1000;\nconst priorNetIncome = Number(netIncomes[2].replace(/,/g, \"\")) / 1000;\nconst currentGrossProfit = Number(grossProfits[1].replace(/,/g, \"\")) / 1000;\nconst priorGrossProfit = Number(grossProfits[2].replace(/,/g, \"\")) / 1000;\n\nconst currentGrossMarginPercent = Number(\n  ((currentGrossProfit / currentRevenue) * 100).toFixed(2)\n);\nconst priorGrossMarginPercent = Number(\n  ((priorGrossProfit / priorRevenue) * 100).toFixed(2)\n);\nreturn [\n  {\n    json: {\n      company: \"Microsoft\",\n      source: \"Microsoft Investor Relations\",\n      quarterEnded: quarterEnded[1],\n\n      // Rounded headline figures, as before\n      revenueBillions: Number(revenue[1]),\n      netIncomeGaapBillions: Number(netIncome[1]),\n\n      // Exact income statement figures, converted from millions to billions\n      revenueCurrentExactBillions: currentRevenue,\n      revenuePriorYearBillions: priorRevenue,\n      netIncomeCurrentExactGaapBillions: currentNetIncome,\n      netIncomePriorYearGaapBillions: priorNetIncome,\n      grossProfitCurrentBillions: currentGrossProfit,\n      grossProfitPriorYearBillions: priorGrossProfit,\n      grossMarginPercentCurrent: currentGrossMarginPercent,\n      grossMarginPercentPriorYear: priorGrossMarginPercent,\n      grossMarginChangePercentagePoints: Number(\n        (currentGrossMarginPercent - priorGrossMarginPercent).toFixed(2)\n),\n      // Compare Q1 FY27 with Q1 FY26\n      revenueYoYGrowthPercent: Number(\n        (((currentRevenue - priorRevenue) / priorRevenue) * 100).toFixed(2)\n      ),\n      netIncomeGaapYoYGrowthPercent: Number(\n        (((currentNetIncome - priorNetIncome) / priorNetIncome) * 100).toFixed(2)\n      ),\n\n      note: \"Growth calculated from exact income statement figures; Q1 compared with Q1\",\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        -144
+      ],
+      "id": "9769549f-d15d-4379-8c69-7169619f0452",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        288,
+        -304
+      ],
+      "id": "99ced401-04cb-4b7b-b0cf-669420a11465",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => {\n  const data = item.json;\n\n  let revenue;\n  let netIncome;\n\n  if (data.source === 'SEC EDGAR Company Facts') {\n    revenue = data.metrics?.revenue?.valueUSD;\n    netIncome = data.metrics?.netIncome?.valueUSD;\n  } else if (data.source === 'Microsoft Investor Relations') {\n    revenue = data.revenueBillions;\n    netIncome = data.netIncomeGaapBillions;\n  }\n\n  const margin = Number.isFinite(Number(revenue)) &&\n                 Number.isFinite(Number(netIncome))\n    ? Number(((Number(netIncome) / Number(revenue)) * 100).toFixed(2))\n    : null;\n\n  return {\n    json: {\n      ...data,\n      netIncomeMarginPercent: margin,\n    },\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        -304
+      ],
+      "id": "288ae729-3989-425b-8cb1-4b30275724cf",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const records = $input.all().map(item => item.json);\n\nconst annual = records.find(\n  item => item.source === \"SEC EDGAR Company Facts\"\n);\nconst quarterly = records.find(\n  item => item.source === \"Microsoft Investor Relations\"\n);\n\nif (!annual || !quarterly) {\n  throw new Error(\"Expected both the SEC and Microsoft IR records.\");\n}\n\nconst exactQuarterlyNetMargin = Number(\n  (\n    (quarterly.netIncomeCurrentExactGaapBillions /\n      quarterly.revenueCurrentExactBillions) * 100\n  ).toFixed(2)\n);\n\nreturn [\n  {\n    json: {\n      company: \"Microsoft\",\n      annual: {\n        source: annual.source,\n        sourceUrl:\n          \"https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json\",\n        periodEnded: annual.metrics.revenue.periodEnded,\n        filed: annual.metrics.revenue.filed,\n        revenueBillions: annual.metrics.revenue.valueBillions,\n        netIncomeBillions: annual.metrics.netIncome.valueBillions,\n        totalAssetsBillions: annual.metrics.totalAssets.valueBillions,\n        netIncomeMarginPercent: annual.netIncomeMarginPercent\n      },\n      quarterly: {\n        source: quarterly.source,\n        sourceUrl:\n          \"https://www.microsoft.com/en-us/investor/earnings/fy-2027-q1/press-release-webcast\",\n        quarterEnded: quarterly.quarterEnded,\n        revenueBillions: quarterly.revenueCurrentExactBillions,\n        netIncomeGaapBillions:\n          quarterly.netIncomeCurrentExactGaapBillions,\n        grossProfitBillions:\n          quarterly.grossProfitCurrentBillions,\n        netIncomeMarginPercent: exactQuarterlyNetMargin,\n        grossMarginPercent:\n          quarterly.grossMarginPercentCurrent,\n        revenueYoYGrowthPercent:\n          quarterly.revenueYoYGrowthPercent,\n        netIncomeGaapYoYGrowthPercent:\n          quarterly.netIncomeGaapYoYGrowthPercent,\n        grossMarginChangePercentagePoints:\n          quarterly.grossMarginChangePercentagePoints\n      },\n      analysisLimits: [\n        \"Annual and quarterly totals cover different lengths of time; do not compare them as if they were the same period.\",\n        \"This data does not include share price or company valuation.\",\n        \"Summarize reported facts; do not make a buy or sell recommendation.\"\n      ]\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        -304
+      ],
+      "id": "6823f7fc-8f10-41fa-9299-b14feb3babba",
+      "name": "Evidence Carad Provider"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a careful financial research explainer. Use only the evidence card below. Do not invent facts, forecasts, or share-price information.\n\nKeep the FY2026 annual figures separate from the FY2027 Q1 quarterly figures. Do not compare their revenue or net income totals as if they cover the same length of time.\n\nBriefly explain:\n- What the annual and quarterly figures say\n- The quarterly year-over-year revenue and net income growth\n- The gross margin and how it changed from the same quarter last year\n- What information is missing, including stock price and valuation\n\nIf a fact is not in the evidence card, say it was not provided. Do not recommend buying or selling the stock.\n\nEvidence card:\n{{ JSON.stringify($json) }}",
+        "messages": {
+          "messageValues": []
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        960,
+        -304
+      ],
+      "id": "9ad36958-d0fe-4f49-a61c-29f82b8a8e4d",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "qwen/qwen3.8-27b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        896,
+        -96
+      ],
+      "id": "fb0b79d1-ff4f-42f0-9719-c65aeeeb8dbb",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "MQvx4T7IXA7HTGYy",
+          "name": "Groq account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Evidence Carad Provider",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evidence Carad Provider": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "494a65a7-faef-4a79-9cc0-37e7398e2325",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8d8af4bc39fbddc3c134f9f4898f569177541801e3758c754e6b3565cd16e85e"
+  },
+  "nodeGroups": [],
+  "id": "cgjyUzrv8UID80ct",
+  "tags": []
+}

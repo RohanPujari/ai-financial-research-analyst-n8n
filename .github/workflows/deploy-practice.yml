@@ -1,0 +1,71 @@
+name: Deploy workflow to local practice n8n
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workflows/Microsoft SEC Financial Snapshot.json"
+      - "scripts/prepare-release.py"
+      - ".github/workflows/deploy-practice.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-practice-n8n-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # This runner must be installed on the Mac that hosts port 5679.
+    # The job only imports/publishes the workflow; it does not run SEC/Groq calls.
+    runs-on: self-hosted
+    steps:
+      - name: Check out versioned project
+        uses: actions/checkout@v4
+
+      - name: Export current practice workflow mapping
+        working-directory: n8n-local-production
+        env:
+          PRACTICE_WORKFLOW_ID: ${{ vars.PRACTICE_WORKFLOW_ID }}
+        run: |
+          test -n "$PRACTICE_WORKFLOW_ID" || { echo "Set the PRACTICE_WORKFLOW_ID repository variable first."; exit 1; }
+          docker compose exec -T n8n n8n export:workflow \
+            --id="$PRACTICE_WORKFLOW_ID" \
+            --output=/tmp/practice-current.json
+          docker compose exec -T n8n sh -c 'cat /tmp/practice-current.json' \
+            > "$RUNNER_TEMP/practice-current.json"
+
+      - name: Prepare practice-specific workflow export
+        id: prepare
+        env:
+          SEC_USER_AGENT_EMAIL: ${{ secrets.SEC_USER_AGENT_EMAIL }}
+        run: |
+          python3 scripts/prepare-release.py \
+            --source "workflows/Microsoft SEC Financial Snapshot.json" \
+            --target "$RUNNER_TEMP/practice-current.json" \
+            --output "$RUNNER_TEMP/microsoft-financial-analyst-release.json"
+          workflow_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$RUNNER_TEMP/practice-current.json")
+          echo "workflow_id=$workflow_id" >> "$GITHUB_OUTPUT"
+
+      - name: Import workflow into the practice n8n database
+        working-directory: n8n-local-production
+        run: |
+          docker compose exec -T n8n sh -c 'cat > /tmp/workflow-release.json' \
+            < "$RUNNER_TEMP/microsoft-financial-analyst-release.json"
+          docker compose exec -T n8n n8n import:workflow \
+            --input=/tmp/workflow-release.json
+
+      - name: Publish the imported workflow
+        working-directory: n8n-local-production
+        run: >-
+          docker compose exec -T n8n n8n publish:workflow
+          --id=${{ steps.prepare.outputs.workflow_id }}
+
+      - name: Remove temporary workflow exports from the container
+        if: always()
+        working-directory: n8n-local-production
+        run: >-
+          docker compose exec -T n8n sh -c
+          'rm -f /tmp/practice-current.json /tmp/workflow-release.json' || true

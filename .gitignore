@@ -1,0 +1,10 @@
+.DS_Store
+*.env
+*.env.*
+*decrypted*.json
+*credentials*.json
+*.tar.gz
+n8n-local/**/data/
+n8n-local-production/**/data/
+outputs/
+workflows/practice-current.json
