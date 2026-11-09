@@ -22,6 +22,8 @@ Edit workflow in development n8n
 
 The deployment workflow runs only for pushes to `main` and manual dispatch. It does not run on public pull requests. The Mac, Docker Desktop, and self-hosted runner must be on; this keeps the exercise free, but it does not host n8n on the public internet.
 
+For the completed deployment exercise, the runner was registered as an ephemeral one-job runner and then removed automatically. Future deployment runs will wait in GitHub until another runner is started. No runner is left active on the Mac, so pushes do not currently deploy by themselves. Do not leave a runner connected unless you intend trusted repository workflows to control local Docker.
+
 Before running the workflow, configure these GitHub repository settings:
 
 - **Variable** `PRACTICE_WORKFLOW_ID`: the workflow ID shown in the practice n8n URL.
