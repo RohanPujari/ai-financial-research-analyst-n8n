@@ -15,6 +15,14 @@ from pathlib import Path
 def read_json(path: Path) -> dict:
     with path.open(encoding="utf-8") as file:
         value = json.load(file)
+    # n8n's CLI export:workflow writes an array even when exporting one ID.
+    # The release mapper handles one source and one target workflow at a time.
+    if isinstance(value, list):
+        if len(value) != 1:
+            raise ValueError(
+                f"Expected exactly one workflow in {path}, found {len(value)}"
+            )
+        value = value[0]
     if not isinstance(value, dict):
         raise ValueError(f"Expected a JSON object in {path}")
     return value
