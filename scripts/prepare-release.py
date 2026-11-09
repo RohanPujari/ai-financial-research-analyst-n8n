@@ -9,9 +9,7 @@ It fails closed if a credentialed node cannot be matched by name and type.
 
 import argparse
 import json
-import os
 from pathlib import Path
-import re
 
 
 def read_json(path: Path) -> dict:
@@ -43,9 +41,6 @@ def prepare(source: dict, target: dict, source_path: Path, target_path: Path) ->
     release = json.loads(json.dumps(source))
     release["id"] = target["id"]
 
-    contact_email = os.environ.get("SEC_USER_AGENT_EMAIL", "").strip()
-    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", contact_email):
-        raise ValueError("Set SEC_USER_AGENT_EMAIL to a valid contact email in the runner environment")
     placeholder = "your-email@example.com"
     replaced_contact = False
 
@@ -83,11 +78,25 @@ def prepare(source: dict, target: dict, source_path: Path, target_path: Path) ->
             .get("headerParameters", {})
             .get("parameters", [])
         )
+        target_headers = (
+            target_node.get("parameters", {})
+            .get("headerParameters", {})
+            .get("parameters", [])
+        )
+        target_user_agents = [
+            h.get("value", "")
+            for h in target_headers
+            if h.get("name", "").lower() == "user-agent"
+        ]
         for header in headers:
             if header.get("name", "").lower() == "user-agent":
                 value = header.get("value", "")
                 if placeholder in value:
-                    header["value"] = value.replace(placeholder, contact_email)
+                    if len(target_user_agents) != 1 or not target_user_agents[0]:
+                        raise ValueError(
+                            "The practice export must contain its existing SEC User-Agent header"
+                        )
+                    header["value"] = target_user_agents[0]
                     replaced_contact = True
 
     if not replaced_contact:

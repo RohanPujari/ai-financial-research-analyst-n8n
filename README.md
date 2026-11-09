@@ -25,9 +25,10 @@ The deployment workflow runs only for pushes to `main` and manual dispatch. It d
 Before running the workflow, configure these GitHub repository settings:
 
 - **Variable** `PRACTICE_WORKFLOW_ID`: the workflow ID shown in the practice n8n URL.
-- **Secret** `SEC_USER_AGENT_EMAIL`: the contact email used in the SEC request's User-Agent. The public workflow JSON contains only a placeholder; the release script inserts this value during deployment and does not print it.
 
-The practice n8n instance must already contain the Groq credential. The deployment script fetches the practice workflow export at run time and maps its credential reference onto the development workflow. It never exports or uploads credential secrets.
+The practice n8n instance must already contain the Groq credential. The deployment script fetches the practice workflow export at run time and maps its credential reference and existing SEC User-Agent header onto the development workflow. The SEC contact email stays in the local n8n instance and is neither stored as a GitHub secret nor included in this public repository. Credential secrets are never exported or uploaded.
+
+This repository is public, so keep write access limited to trusted maintainers. GitHub recommends using self-hosted runners with private repositories; this demo avoids `pull_request` triggers, but the Mac runner still has access to Docker and the local practice instance.
 
 ## Sensitive data
 

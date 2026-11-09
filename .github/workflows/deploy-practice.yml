@@ -39,8 +39,6 @@ jobs:
 
       - name: Prepare practice-specific workflow export
         id: prepare
-        env:
-          SEC_USER_AGENT_EMAIL: ${{ secrets.SEC_USER_AGENT_EMAIL }}
         run: |
           python3 scripts/prepare-release.py \
             --source "workflows/Microsoft SEC Financial Snapshot.json" \
