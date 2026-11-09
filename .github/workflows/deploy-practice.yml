@@ -44,7 +44,7 @@ jobs:
             --source "workflows/Microsoft SEC Financial Snapshot.json" \
             --target "$RUNNER_TEMP/practice-current.json" \
             --output "$RUNNER_TEMP/microsoft-financial-analyst-release.json"
-          workflow_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$RUNNER_TEMP/practice-current.json")
+          workflow_id=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print((d[0] if isinstance(d,list) else d)["id"])' "$RUNNER_TEMP/practice-current.json")
           echo "workflow_id=$workflow_id" >> "$GITHUB_OUTPUT"
 
       - name: Import workflow into the practice n8n database
